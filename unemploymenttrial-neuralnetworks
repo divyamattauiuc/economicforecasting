@@ -1,0 +1,136 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+
+url = 'http://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data'
+column_names = ['MPG', 'Cylinders', 'Displacement', 'Horsepower', 'Weight',
+                'Acceleration', 'Model Year', 'Origin']
+
+raw_dataset = pd.read_csv(url, names=column_names,na_values='?', comment='\t',sep=' ', skipinitialspace=True)
+dataset = raw_dataset.copy()
+##print(dataset.tail())
+##print(dataset.isna().sum())
+dataset = dataset.dropna()
+## The different countries are assigned to corresponding numbers
+dataset['Origin'] = dataset['Origin'].map({1: 'USA', 2: 'Europe', 3: 'Japan'})
+## Turns the different numbers into three different columns containing boolean values (0,1)
+dataset = pd.get_dummies(dataset, columns=['Origin'], prefix='', prefix_sep='')
+##print(dataset.tail())
+
+## 80 percent of the data set is for training and the train data set is not random
+train_dataset = dataset.sample(frac=0.8, random_state=0)
+test_dataset = dataset.drop(train_dataset.index)
+
+## Plotting the train data set
+sns.pairplot(train_dataset[['MPG', 'Cylinders', 'Displacement', 'Weight']], diag_kind='kde')
+plt.show()
+
+## Give all the statistics of the data given
+##train_dataset.describe().transpose()
+##train_dataset.describe().transpose()
+
+
+train_features = train_dataset.copy()
+test_features = test_dataset.copy()
+
+## Removing the predictions and storing it as labels
+train_labels = train_features.pop('MPG')
+test_labels = test_features.pop('MPG')
+
+## Showing the mean and standard deviation 
+##train_dataset.describe().transpose()[['mean', 'std']]
+
+## Reduces the values to floating numbers between 0 and 1
+normalizer = tf.keras.layers.Normalization(axis=-1)
+normalizer.adapt(np.array(train_features))
+
+##print(normalizer.mean.numpy())
+##first = np.array(train_features[:1])
+
+##with np.printoptions(precision=2, suppress=True):
+ ## print('First example:', first)
+  ##print()
+ ## print('Normalized:', normalizer(first).numpy())
+
+
+## Linear Regression With 1 Variable (Horsepower Parameter)
+
+horsepower = np.array(train_features['Horsepower'])
+
+## Normalizing the horespower, bringing it within a range of 0 and 1
+horsepower_normalizer = layers.Normalization(input_shape=[1,], axis=None)
+horsepower_normalizer.adapt(horsepower)
+
+
+## Defining the structure of the neural network; in this context network and model are used interchangeably
+horsepower_model = tf.keras.Sequential([
+    horsepower_normalizer,
+    layers.Dense(units=1)
+])
+
+##print(horsepower_model.summary())
+horsepower_model.predict(horsepower[:10])
+
+
+horsepower_model.compile(
+    ## Learning rate is at which rate you change the coefficent to learn (in which way will the model tune it's values to get an accurate value )
+    optimizer=tf.optimizers.Adam(learning_rate=0.1),
+    ## define which type of loss that the model should be looking at
+    loss='mean_absolute_error')
+
+## Training of the model
+history = horsepower_model.fit(
+    ## giving the x-values (independent)
+    train_features['Horsepower'],
+    ##giving the known output values (dependent)
+    train_labels,
+    ## the number of times this data is going to be reinputted into the program (there is a max number of epochs where the accuracy will stop increasing)
+    epochs=100,
+    # Suppress logging.
+    verbose=0,
+    # Calculate validation results on 20% of the training data.
+    ## The train and test data was split 80/20 in the beginning; Then you are doing a validation of 20 percent within that 80 percent
+    ## checking the accuracy of the model based on a fraction of the training data that was not used for training
+    validation_split = 0.2)
+
+## plotting out the validation loss and the loss based on the train dataset
+hist = pd.DataFrame(history.history)
+hist['epoch'] = history.epoch
+hist.tail()
+def plot_loss(history):
+  plt.plot(history.history['loss'], label='loss')
+  plt.plot(history.history['val_loss'], label='val_loss')
+  plt.ylim([0, 10])
+  plt.xlabel('Epoch')
+  plt.ylabel('Error [MPG]')
+  plt.legend()
+  plt.grid(True)
+  plt.show()
+
+##plot_loss(history)
+
+test_results = {}
+
+## apply the model to the test dataset (the remaining 20 percent)
+test_results['horsepower_model'] = horsepower_model.evaluate(
+    test_features['Horsepower'],
+    test_labels, verbose=0)
+
+x = tf.linspace(0.0, 250, 251)
+## applying it to a specific data point or a list of data points
+y = horsepower_model.predict(x)
+
+## plotting the linear regression model and the dataset
+def plot_horsepower(x, y):
+  plt.scatter(train_features['Horsepower'], train_labels, label='Data')
+  plt.plot(x, y, color='k', label='Predictions')
+  plt.xlabel('Horsepower')
+  plt.ylabel('MPG')
+  plt.legend()
+  plt.show()
+
+plot_horsepower(x,y)
